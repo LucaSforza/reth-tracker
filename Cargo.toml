@@ -26,3 +26,5 @@ ethers = "2.0.14"
 clap = { version = "4.5.53", features = ["derive"] }
 rusqlite = "0.37.0"
 chrono = { version = "0.4", features = ["serde"] }
+indicatif = "0.18.3"
+futures = "0.3.31"
