@@ -1,0 +1,23 @@
+[package]
+name = "reth-rs"
+version = "0.1.0"
+edition = "2021"
+
+# Binario principale
+[[bin]]
+name = "main"
+path = "src/bin/main.rs"
+
+[dependencies]
+# Dipendenza verso i binding generati
+reth-lib = { package = "foundry-contracts", path = "out/bindings" }
+
+# Dipendenze per async e provider
+tokio = { version = "1.42", features = ["full"] }
+anyhow = "1.0"
+alloy = { version = "1.0", features = ["sol-types", "contract"] }
+serde = { version = "1.0", features = ["derive"] }
+ethers = "2.0.14"
+clap = { version = "4.5.53", features = ["derive"] }
+rusqlite = "0.37.0"
+chrono = { version = "0.4", features = ["serde"] }
