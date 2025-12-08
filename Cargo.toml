@@ -1,5 +1,10 @@
 [package]
 name = "reth-tracker"
+authors = ["Luca Sforza <lucasforza1234@icloud.com>"]
+license = "GPL-3.0-or-later"
+description = "Monitor staking rewards for Ethereum addresses using Rocket Pool rETH"
+repository = "https://github.com/LucaSforza/reth-tracker"
+homepage = "https://github.com/LucaSforza/reth-tracker"
 version = "0.1.0"
 edition = "2021"
 
