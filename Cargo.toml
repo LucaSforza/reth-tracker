@@ -1,5 +1,5 @@
 [package]
-name = "reth-rs"
+name = "reth-tracker"
 version = "0.1.0"
 edition = "2021"
 

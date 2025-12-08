@@ -13,6 +13,10 @@ use rusqlite::Connection;
 use std::env;
 use std::path::PathBuf;
 
+/// Retrieves or creates the SQLite database connection and ensures required tables exist.
+///
+/// # Returns
+/// A `rusqlite::Result` containing the database `Connection`.
 fn get_db() -> rusqlite::Result<Connection> {
     // Recupera la variabile HOME
     let home = env::var("HOME").expect("HOME non trovata. Sei sicuro di essere su macOS/Linux?");
@@ -57,36 +61,65 @@ fn get_db() -> rusqlite::Result<Connection> {
     Ok(conn)
 }
 
+/// Parses a string slice into an Ethereum `Address`.
+///
+/// # Parameters
+/// - `x`: A string slice representing the Ethereum address.
+///
+/// # Returns
+/// A `Result` containing the parsed `Address` or an error.
 fn get_address_str(x: &str) -> Result<Address> {
     return Ok(x.parse()?);
 }
 
+/// Parses a `String` into an Ethereum `Address`.
+///
+/// # Parameters
+/// - `x`: A `String` representing the Ethereum address.
+///
+/// # Returns
+/// A `Result` containing the parsed `Address` or an error.
 fn get_address(x: String) -> Result<Address> {
     return get_address_str(x.as_str());
 }
 
+/// Commands supported by the CLI tool.
 #[derive(Subcommand, Clone, Debug, PartialEq, Eq)]
 enum Command {
+    /// Adds an Ethereum address to watch.
     AddWatchAddress {
+        /// The Ethereum address to add.
         #[arg(short, long)]
         address: String,
     },
 
+    /// Updates the stored staking rewards data.
     Update,
 
+    /// Lists the tracked addresses and their staking reward history.
     List,
 }
 
 /// Main CLI configuration.
 #[derive(Parser, Debug)]
 #[command(
-    name = "reth-watch",
+    name = "reth-tracker",
     author = "Luca Sforza <lucasforza1234@icloud.com>",
     version,
-    about = None,
+    about = "
+reth-tracker allows you to monitor the staking rewards of an Ethereum address
+using Rocket Pool ETH.
+
+It provides the ability to track the conversion rate of rETH to ETH directly
+from the protocol. This value is not influenced by the market price of rETH,
+but accurately reflects the Ether accrued through staking.
+
+The tool is designed to help users keep a historical record of their staking
+rewards over time and calculate their returns.",
     long_about = None
 )]
 struct Args {
+    /// The command to execute.
     #[command(subcommand)]
     command: Command,
 
@@ -98,7 +131,7 @@ struct Args {
     )]
     rpc_address: String,
 
-    // Address of the rETH contract
+    /// Address of the rETH contract.
     #[
         arg(
             short,
@@ -109,7 +142,19 @@ struct Args {
     address_reth: String,
 }
 
-// It returns the rETH amount, the rETH converted in ETH, ETH in the address, total amount of ETH
+/// Retrieves staking and balance values for a given Ethereum address.
+///
+/// # Parameters
+/// - `provider`: A reference to the Ethereum provider.
+/// - `address`: The Ethereum address to query.
+/// - `address_reth`: The rETH contract address.
+///
+/// # Returns
+/// A `Result` containing a tuple with:
+/// - rETH balance (f64),
+/// - rETH converted to ETH (f64),
+/// - ETH balance of the address (f64),
+/// - total ETH balance including converted rETH (f64).
 async fn get_values<F, N>(
     provider: &F,
     address: Address,
@@ -144,6 +189,18 @@ where
     ));
 }
 
+/// Inserts staking reward data into the database.
+///
+/// # Parameters
+/// - `conn`: Reference to the SQLite database connection.
+/// - `address`: Ethereum address as a string slice.
+/// - `balance_reth`: The rETH balance.
+/// - `balance_eth`: The rETH converted to ETH.
+/// - `address_eth_balance`: The ETH balance of the address.
+/// - `total_eth_balance`: The total ETH balance including converted rETH.
+///
+/// # Returns
+/// A `Result` indicating success or failure.
 fn insert_into_database(
     conn: &Connection,
     address: &str,
