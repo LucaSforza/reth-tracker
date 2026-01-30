@@ -13,16 +13,21 @@ reth-tracker enables monitoring of staking rewards for an Ethereum address using
 ## Installation
 
 ```bash
-$ cargo install reth-tracker
+cargo install reth-tracker
 ```
-
 
 ## Build
 
-First, generate the Solidity bindings for the rETH token smart contract (source: [etherscan](https://etherscan.io/address/0xae78736Cd615f374D3085123A210448E74Fc6393#code)).
+Install SQL first.
+
+```
+sudo apt install sqlite-devel
+```
+
+Then generate the Solidity bindings for the rETH token smart contract (source: [etherscan](https://etherscan.io/address/0xae78736Cd615f374D3085123A210448E74Fc6393#code)).
 
 ```bash
-$ forge bind
+forge bind
 ```
 
 To install forge, start from [here]("todo")
@@ -30,7 +35,7 @@ To install forge, start from [here]("todo")
 Afterwards, simply compile with [cargo]("todo").
 
 ```bash
-$ cargo build
+cargo build
 ```
 
 ## Usage
@@ -38,7 +43,7 @@ $ cargo build
 To run reth-tracker, use the following command-line interface:
 
 ```bash
-$ reth-tracker --help
+reth-tracker --help
 ```
 
 Example usage:
@@ -46,17 +51,18 @@ Example usage:
 Add an Ethereum address to watch:
 
 ```bash
-$ reth-tracker add-watch-address -a 0xYourEthereumAddress
+reth-tracker add-watch-address -a 0xYourEthereumAddress
 ```
 
 Update the stored staking rewards for all tracked addresses:
 
 ```bash
-$ reth-tracker update
+reth-tracker update
 ```
 
 List all tracked addresses and their staking reward history:
 
 ```bash
-$ reth-trackers list
+reth-trackers list
 ```
+
