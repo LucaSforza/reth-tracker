@@ -15,3 +15,7 @@ docs/
 
 # rust output
 target
+node_modules/
+dist/
+*.local
+*.tsbuildinfo
