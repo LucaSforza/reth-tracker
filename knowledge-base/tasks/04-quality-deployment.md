@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | in-progress |
+| Status | complete |
 | Depends on | 02, 03 |
 | Blocks | 05 |
 | Parallelizable | partly; starts after integration contracts stabilize |
@@ -47,3 +47,16 @@ toolchain) out of the browser MVP check. Then follow the QA matrix in
 `tasks/05-browser-qa.md`, including serving `dist/` beneath a repository-like
 base path. Do not mark this task complete until those checks and the manual
 Codex browser pass are recorded.
+
+## Integration completion
+
+- The React dashboard now loads and mutates the IndexedDB repository instead of
+  using fixture data.
+- Adding or refreshing an address performs a pinned-block mainnet read and saves
+  the observation locally.
+- The displayed reward uses the bigint protocol-rate aggregation rather than a
+  raw portfolio-value delta.
+- `npm run typecheck`, all 14 scoped web tests, the root production build, and a
+  build with `VITE_BASE_PATH=/reth-tracker/` pass.
+- The only build notice is Vite's advisory 500 kB chunk-size warning; the main
+  minified bundle is about 523 kB (about 162 kB gzip).
