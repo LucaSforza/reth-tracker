@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | planned |
+| Status | completed |
 | Depends on | 01 |
 | Blocks | 04 |
 | Parallelizable | yes, with 03 |
@@ -24,3 +24,22 @@
 - RPC, contract, offline, and invalid-address errors become actionable domain errors.
 - Duplicate rapid refreshes do not create noisy duplicate observations.
 
+## Implementation notes
+
+- `ViemEthereumReader` performs read-only mainnet calls against the canonical
+  rETH contract (`0xae78736Cd615f374D3085123A210448E74Fc6393`) and pins all
+  values to one block. It reads rETH decimals, balances, protocol conversion,
+  exchange rate, block number, and block timestamp without requesting a wallet.
+- `IndexedDbTrackerRepository` stores addresses, observations, preferences, and
+  import/export data locally. Snapshot keys use one-minute address/time buckets,
+  so repeated refreshes replace the existing observation instead of creating
+  duplicates.
+- Raw amounts remain canonical decimal strings at the persistence boundary and
+  are parsed to `bigint` for reward calculations and display formatting; no
+  floating-point conversion is used.
+- Domain errors classify invalid addresses/RPC URLs, offline RPC, contract/RPC
+  failures, storage failures, and malformed imports for actionable UI states.
+- Tests cover reward aggregation, negative rate changes, precision-safe display,
+  percentages, address validation, and malformed imported values. IndexedDB
+  integration remains covered by the repository abstraction and can be expanded
+  with a fake IndexedDB adapter when that dependency is added.
