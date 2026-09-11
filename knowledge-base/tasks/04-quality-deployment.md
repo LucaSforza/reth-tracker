@@ -40,8 +40,10 @@ browser QA in Task 05 has passed.
 ### Verification owned by primary integration
 
 The workflow assumes the final frontend contracts and tests from Tasks 02/03.
-Run `npm install`, `npm run typecheck`, `npm test -- --run`, and
-`npm run build` after integration. Then follow the QA matrix in
+Run `npm install`, `npm run typecheck`, `npm test -- --run src/web`, and
+`npm run build` after integration. The `src/web` filter intentionally keeps
+vendored OpenZeppelin JavaScript tests (which require a separate Truffle
+toolchain) out of the browser MVP check. Then follow the QA matrix in
 `tasks/05-browser-qa.md`, including serving `dist/` beneath a repository-like
 base path. Do not mark this task complete until those checks and the manual
 Codex browser pass are recorded.

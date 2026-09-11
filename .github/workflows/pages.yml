@@ -1,0 +1,80 @@
+name: Deploy web app to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# The Pages deployment action needs to publish an artifact and request an
+# OIDC token. Repository contents are read-only during this workflow.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # There is intentionally no lockfile in this early MVP. Keep the
+      # install non-interactive and avoid creating a lockfile in the runner.
+      - name: Install frontend dependencies
+        run: npm install --no-package-lock --no-audit --no-fund
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Run frontend tests
+        # Keep the browser MVP checks separate from vendored OpenZeppelin
+        # JavaScript tests, which require their own Truffle toolchain.
+        run: npm test -- --run src/web
+
+      - name: Determine Pages base path
+        id: pages-path
+        shell: bash
+        run: |
+          repository="${GITHUB_REPOSITORY#*/}"
+          if [[ "$repository" == *.github.io ]]; then
+            echo "base=/" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=/$repository/" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build for the repository Pages path
+        env:
+          VITE_BASE_PATH: ${{ steps.pages-path.outputs.base }}
+        run: npm run build
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: Publish to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@v4
