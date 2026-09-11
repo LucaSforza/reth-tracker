@@ -23,4 +23,13 @@ describe("data validation", () => {
     });
     expect(state.watchedAddresses).toEqual([address]);
   });
+
+  it("preserves dashboard preferences and defaults legacy imports", () => {
+    const base = { watchedAddresses: [], snapshots: [], rpcUrl: "https://example.com/rpc" };
+    expect(validateState({ ...base, preferences: { locale: "it", visibleSections: { overview: true, chart: false, history: true } } }).preferences).toEqual({
+      locale: "it",
+      visibleSections: { overview: true, chart: false, history: true },
+    });
+    expect(validateState(base).preferences?.locale).toBe("en");
+  });
 });

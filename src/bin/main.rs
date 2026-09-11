@@ -294,7 +294,7 @@ fn insert_into_database(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Indirizzo del contratto già deployato
+    // Address of the already deployed contract
 
     let args = Args::parse();
 

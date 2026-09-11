@@ -29,12 +29,12 @@ function classifyReadError(error: unknown): TrackerError {
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
   if (lower.includes("failed to fetch") || lower.includes("network") || lower.includes("offline") || lower.includes("timeout") || lower.includes("fetch")) {
-    return new TrackerError("offline", "Impossibile raggiungere l'endpoint RPC. Controlla la connessione o scegli un altro endpoint.", error);
+  return new TrackerError("offline", "Unable to reach the RPC endpoint. Check your connection or choose another endpoint.", error);
   }
   if (lower.includes("revert") || lower.includes("contract") || lower.includes("execution")) {
-    return new TrackerError("contract", "Il contratto rETH non ha restituito una risposta valida.", error);
+    return new TrackerError("contract", "The rETH contract did not return a valid response.", error);
   }
-  return new TrackerError("rpc", "L'endpoint RPC ha rifiutato la richiesta. Verifica URL e disponibilità del provider.", error);
+  return new TrackerError("rpc", "The RPC endpoint rejected the request. Check the URL and provider availability.", error);
 }
 
 /** Read-only mainnet reader. It never requests a wallet or a signing capability. */
@@ -49,7 +49,7 @@ export class ViemEthereumReader implements EthereumReader {
     const account = normalizeAddress(address);
     const endpoint = validateRpcUrl(rpcUrl);
     if (!isAddress(account, { strict: false })) {
-      throw new TrackerError("invalid-address", "L'indirizzo Ethereum non è valido.");
+      throw new TrackerError("invalid-address", "The Ethereum address is not valid.");
     }
     let client: EthereumClient;
     try {
@@ -72,7 +72,7 @@ export class ViemEthereumReader implements EthereumReader {
       ]);
       const capturedAt = Number(block.timestamp) * 1000;
       if (!Number.isSafeInteger(capturedAt) || capturedAt <= 0) {
-        throw new TrackerError("rpc", "L'RPC ha restituito un timestamp di blocco non valido.");
+        throw new TrackerError("rpc", "The RPC returned an invalid block timestamp.");
       }
       const normalizedBalance = BigInt(rethBalance);
       return {
@@ -98,7 +98,7 @@ export class ViemEthereumReader implements EthereumReader {
       const client = this.clientFactory(endpoint);
       const value = await client.readContract({ address: RETH_MAINNET_ADDRESS, abi: RETH_ABI, functionName: "decimals" });
       const decimals = Number(value);
-      if (!Number.isInteger(decimals) || decimals < 0 || decimals > 36) throw new TrackerError("contract", "Il contratto rETH ha restituito decimali non validi.");
+      if (!Number.isInteger(decimals) || decimals < 0 || decimals > 36) throw new TrackerError("contract", "The rETH contract returned invalid decimals.");
       return decimals;
     } catch (error) {
       if (error instanceof TrackerError) throw error;

@@ -1,8 +1,11 @@
 import { useId, useMemo, useState } from "react";
 import type { ChainSnapshot } from "../domain/types";
+import type { Locale } from "../domain/types";
+import { getCopy } from "../i18n";
 
 interface ObservationChartProps {
   snapshots: ChainSnapshot[];
+  locale: Locale;
 }
 
 const width = 760;
@@ -18,11 +21,12 @@ function eth(wei: string): number {
   }
 }
 
-function dateLabel(timestamp: number, compact = false) {
-  return new Intl.DateTimeFormat("it-IT", compact ? { day: "2-digit", month: "short" } : { day: "2-digit", month: "short", year: "numeric" }).format(new Date(timestamp));
+function dateLabel(timestamp: number, locale: Locale, compact = false) {
+  return new Intl.DateTimeFormat(locale === "it" ? "it-IT" : "en-US", compact ? { day: "2-digit", month: "short" } : { day: "2-digit", month: "short", year: "numeric" }).format(new Date(timestamp));
 }
 
-export function ObservationChart({ snapshots }: ObservationChartProps) {
+export function ObservationChart({ snapshots, locale }: ObservationChartProps) {
+  const t = getCopy(locale);
   const [hovered, setHovered] = useState<number | null>(null);
   const gradientId = useId().replaceAll(":", "");
   const data = useMemo(() => [...snapshots].sort((a, b) => a.capturedAt - b.capturedAt), [snapshots]);
@@ -37,25 +41,26 @@ export function ObservationChart({ snapshots }: ObservationChartProps) {
   const activeIndex = hovered ?? (data.length - 1);
   const active = data[activeIndex];
 
-  if (!data.length) return <div className="chart-empty">Servono almeno due osservazioni per disegnare il grafico.</div>;
+  if (!data.length) return <div className="chart-empty">{t.chartEmpty}</div>;
 
+  const numberLocale = locale === "it" ? "it-IT" : "en-US";
   return (
     <div className="chart-wrap">
       <div className="chart-value" aria-live="polite">
-        <span>{active ? eth(active.ethValueWei).toLocaleString("it-IT", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : "—"} ETH</span>
-        {active && <small>{dateLabel(active.capturedAt)}</small>}
+        <span>{active ? eth(active.ethValueWei).toLocaleString(numberLocale, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : "—"} ETH</span>
+        {active && <small>{dateLabel(active.capturedAt, locale)}</small>}
       </div>
-      <svg className="observation-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Grafico del valore in ETH osservato nel tempo" onMouseLeave={() => setHovered(null)}>
+      <svg className="observation-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={t.chartAria} onMouseLeave={() => setHovered(null)}>
         <defs><linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#54e3b0" stopOpacity=".23" /><stop offset="1" stopColor="#54e3b0" stopOpacity="0" /></linearGradient></defs>
         {[0, 1, 2, 3].map((step) => {
           const value = max - range * step / 3;
           const lineY = y(value);
-          return <g key={step}><line x1={padding.left} x2={width - padding.right} y1={lineY} y2={lineY} className="chart-grid" /><text x={padding.left - 12} y={lineY + 4} textAnchor="end" className="chart-axis">{value.toLocaleString("it-IT", { maximumFractionDigits: 3 })}</text></g>;
+          return <g key={step}><line x1={padding.left} x2={width - padding.right} y1={lineY} y2={lineY} className="chart-grid" /><text x={padding.left - 12} y={lineY + 4} textAnchor="end" className="chart-axis">{value.toLocaleString(numberLocale, { maximumFractionDigits: 3 })}</text></g>;
         })}
         <path d={area} fill={`url(#${gradientId})`} />
         <path d={line} className="chart-line" />
-        {data.map((item, index) => <g key={item.id} onMouseEnter={() => setHovered(index)} onFocus={() => setHovered(index)} tabIndex={0} role="button" aria-label={`${dateLabel(item.capturedAt)}: ${eth(item.ethValueWei).toLocaleString("it-IT")} ETH`}><circle cx={x(index)} cy={y(eth(item.ethValueWei))} r={hovered === index ? 5 : 3.5} className={`chart-point ${hovered === index ? "active" : ""}`} /><rect x={x(index) - 16} y={padding.top} width={32} height={height - padding.top - padding.bottom} fill="transparent" /></g>)}
-        {data.map((item, index) => (index === 0 || index === data.length - 1 || data.length < 4) && <text key={`label-${item.id}`} x={x(index)} y={height - 11} textAnchor={index === 0 ? "start" : index === data.length - 1 ? "end" : "middle"} className="chart-axis">{dateLabel(item.capturedAt, true)}</text>)}
+        {data.map((item, index) => <g key={item.id} onMouseEnter={() => setHovered(index)} onFocus={() => setHovered(index)} tabIndex={0} role="button" aria-label={`${dateLabel(item.capturedAt, locale)}: ${eth(item.ethValueWei).toLocaleString(numberLocale)} ETH`}><circle cx={x(index)} cy={y(eth(item.ethValueWei))} r={hovered === index ? 5 : 3.5} className={`chart-point ${hovered === index ? "active" : ""}`} /><rect x={x(index) - 16} y={padding.top} width={32} height={height - padding.top - padding.bottom} fill="transparent" /></g>)}
+        {data.map((item, index) => (index === 0 || index === data.length - 1 || data.length < 4) && <text key={`label-${item.id}`} x={x(index)} y={height - 11} textAnchor={index === 0 ? "start" : index === data.length - 1 ? "end" : "middle"} className="chart-axis">{dateLabel(item.capturedAt, locale, true)}</text>)}
       </svg>
     </div>
   );

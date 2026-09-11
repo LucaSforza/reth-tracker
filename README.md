@@ -62,55 +62,18 @@ use the in-app export before clearing if you need a backup. Exported JSON files
 contain public addresses and observations, but may still reveal portfolio
 history and should be handled accordingly.
 
-## MVP web (Italiano)
+## Browser preferences
 
-L'app legge i saldi pubblici ETH/rETH e il rapporto rETH/ETH di Rocket Pool
-tramite JSON-RPC, direttamente nel browser. Indirizzi osservati, osservazioni,
-endpoint RPC e preferenze vengono salvati nell'IndexedDB locale. Non servono
-wallet, login, firme, cookie, chiavi private o un backend.
-
-Il rendimento mostrato è una **stima osservata localmente**, non il guadagno
-totale storico e non è un dato pronto per dichiarazioni fiscali. Tra due
-osservazioni viene stimata la variazione usando il saldo rETH precedente e la
-variazione del tasso del protocollo. Depositi, prelievi, trasferimenti tra le
-osservazioni, endpoint RPC diversi o osservazioni mancanti possono alterare il
-risultato. La ricostruzione completa degli eventi `Transfer` è fuori scope per
-questo MVP.
-
-### Sviluppo e deploy
-
-Con Node.js 22 o superiore, dalla root del progetto:
-
-```bash
-npm install
-npm run dev
-```
-
-Per verificare e creare la build:
-
-```bash
-npm run typecheck
-npm test -- --run src/web
-npm run build
-```
-
-La build viene salvata in `dist/`. Il workflow GitHub Actions configura
-automaticamente il base path corretto per GitHub Pages e pubblica la directory.
-Nelle impostazioni del repository va selezionata la sorgente **GitHub Actions**
-per Pages.
-
-### Privacy e limiti RPC
-
-I dati restano nel browser, ma l'indirizzo e le richieste di lettura vengono
-comunicati al provider RPC scelto: valgono quindi la sua privacy policy e i suoi
-log. Non viene usato un server del progetto. Prima di cancellare i dati del
-sito, esportare il JSON dall'app per conservare lo storico. Il JSON contiene
-indirizzi pubblici e osservazioni, ma può rivelare lo storico del portafoglio.
+The interface defaults to English and can be switched to Italian from Settings.
+The same panel lets users choose whether the position overview, value chart, and
+observation history are visible. Language and visibility choices are stored in
+the browser's existing local IndexedDB repository and are included in JSON
+backups.
 
 ## CLI Rust / Foundry (legacy)
 
-Il repository conserva anche il tool CLI Rust e i contratti Solidity. Per
-compilarli servono Rust/Cargo, Foundry e SQLite development headers:
+The repository also contains the legacy Rust CLI and Solidity contracts. Building
+them requires Rust/Cargo, Foundry, and SQLite development headers:
 
 ```bash
 forge bind
@@ -118,6 +81,5 @@ cargo build
 cargo test --package reth-tracker
 ```
 
-L'uso della CLI è disponibile con `cargo run --bin main -- --help`. Il percorso
-web è il prodotto MVP principale; la CLI non condivide lo storage IndexedDB del
-browser.
+The CLI is available with `cargo run --bin main -- --help`. The web app is the
+primary MVP product; the CLI does not share the browser's IndexedDB storage.

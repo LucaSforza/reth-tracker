@@ -45,6 +45,12 @@ limitations are recorded in this file before its status becomes `complete`.
   `/reth-tracker/`; it was also served at that mount path for the final pass.
 - Address-removal controls were inspected but not invoked, to avoid deleting the
   locally stored live test observation.
+- The English default, Italian switch, localized invalid-address message,
+  dashboard section visibility controls, and persistence of those preferences
+  after reload were verified against the production preview in the Codex browser.
+- Mobile navigation was verified at 360×800; the menu exposes Dashboard,
+  History, and Settings without breaking the compact layout. The final pass
+  restored English and all dashboard sections.
 
 ## Remaining MVP limitations
 

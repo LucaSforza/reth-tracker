@@ -25,7 +25,7 @@
 ## Implementation notes
 
 - Implemented `Dashboard` as a controlled React component with optional callbacks, plus a standalone `App` fixture so the UI can be previewed before the repository/data layer is wired in.
-- Added responsive Italian UI in `src/web/styles.css`: address entry and selection, summary cards, observed-yield disclosure, empty/loading/error states, SVG observation chart, history table, and collapsible settings/data-management panel.
+- Added responsive bilingual UI in `src/web/styles.css`: address entry and selection, summary cards, observed-yield disclosure, empty/loading/error states, SVG observation chart, history table, and collapsible settings/data-management panel.
 - The UI formats wei values with `BigInt` and deliberately labels changes as observed growth rather than lifetime or tax-ready earnings.
 - The chart is dependency-free SVG and supports keyboard focus/hover on data points. Settings supports RPC editing, JSON import/export hooks, and clear-data callback.
 - `npm run typecheck` reaches the dashboard without errors; the repository currently has pre-existing type errors in `src/web/data/ethereum.ts` (`viem` version/API mismatch).

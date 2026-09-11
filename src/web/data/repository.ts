@@ -1,14 +1,15 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import type { ChainSnapshot, EthereumAddress, TrackerRepository, TrackerState } from "../domain/types";
+import { DEFAULT_DASHBOARD_PREFERENCES, type ChainSnapshot, type DashboardPreferences, type EthereumAddress, type TrackerRepository, type TrackerState } from "../domain/types";
 import { DEFAULT_RPC_URL } from "./ethereum";
 import { TrackerError } from "./errors";
-import { normalizeAddress, validateRpcUrl, validateSnapshot, validateState } from "./validation";
+import { normalizeAddress, validatePreferences, validateRpcUrl, validateSnapshot, validateState } from "./validation";
 
 const DB_VERSION = 1;
 const DEFAULT_DB_NAME = "reth-tracker";
 export const DEFAULT_SNAPSHOT_BUCKET_MS = 60_000;
 const RPC_PREFERENCE_KEY = "rpcUrl";
 const SELECTED_ADDRESS_KEY = "selectedAddress";
+const DASHBOARD_PREFERENCES_KEY = "dashboardPreferences";
 
 interface AddressRecord {
   address: EthereumAddress;
@@ -35,7 +36,7 @@ export interface TrackerExport {
 
 function storageError(error: unknown): TrackerError {
   if (error instanceof TrackerError) return error;
-  return new TrackerError("storage", "Impossibile leggere o salvare i dati locali del browser.", error);
+  return new TrackerError("storage", "Unable to read or save the browser's local data.", error);
 }
 
 function snapshotKey(snapshot: Pick<ChainSnapshot, "address" | "capturedAt">, bucketMs: number): string {
@@ -82,19 +83,25 @@ export class IndexedDbTrackerRepository implements TrackerRepository {
   }
 
   private async readState(db: IDBPDatabase<TrackerDbSchema>): Promise<TrackerState> {
-    const [addresses, snapshots, rpcValue, selectedValue] = await Promise.all([
+    const [addresses, snapshots, rpcValue, selectedValue, preferencesValue] = await Promise.all([
       db.getAll("addresses"),
       db.getAll("snapshots"),
       db.get("preferences", RPC_PREFERENCE_KEY),
       db.get("preferences", SELECTED_ADDRESS_KEY),
+      db.get("preferences", DASHBOARD_PREFERENCES_KEY),
     ]);
     const watchedAddresses = addresses.map((record) => normalizeAddress(record.address));
     const selectedAddress = selectedValue === undefined ? undefined : normalizeAddress(selectedValue);
+    let preferences = DEFAULT_DASHBOARD_PREFERENCES;
+    if (preferencesValue !== undefined) {
+      try { preferences = validatePreferences(JSON.parse(preferencesValue)); } catch { /* Recover from malformed local preferences. */ }
+    }
     return {
       watchedAddresses,
       ...(selectedAddress && watchedAddresses.includes(selectedAddress) ? { selectedAddress } : {}),
       snapshots: deduplicateSnapshots(snapshots.map(validateSnapshot), this.bucketMs),
       rpcUrl: rpcValue === undefined ? this.defaultRpcUrl : validateRpcUrl(rpcValue),
+      preferences,
     };
   }
 
@@ -153,13 +160,22 @@ export class IndexedDbTrackerRepository implements TrackerRepository {
     } catch (error) { throw storageError(error); }
   }
 
+  async setPreferences(value: DashboardPreferences): Promise<TrackerState> {
+    const preferences = validatePreferences(value);
+    try {
+      const db = await this.db();
+      await db.put("preferences", JSON.stringify(preferences), DASHBOARD_PREFERENCES_KEY);
+      return this.readState(db);
+    } catch (error) { throw storageError(error); }
+  }
+
   async selectAddress(value?: EthereumAddress): Promise<TrackerState> {
     const address = value === undefined ? undefined : normalizeAddress(value);
     try {
       const db = await this.db();
       if (address !== undefined) {
         const exists = await db.get("addresses", address);
-        if (!exists) throw new TrackerError("invalid-address", "L'indirizzo deve essere aggiunto prima di selezionarlo.");
+        if (!exists) throw new TrackerError("invalid-address", "The address must be added before it can be selected.");
         await db.put("preferences", address, SELECTED_ADDRESS_KEY);
       } else {
         await db.delete("preferences", SELECTED_ADDRESS_KEY);
@@ -178,11 +194,11 @@ export class IndexedDbTrackerRepository implements TrackerRepository {
 
   async importJson(json: string): Promise<TrackerState> {
     let parsed: unknown;
-    try { parsed = JSON.parse(json); } catch (error) { throw new TrackerError("invalid-data", "Il file importato non contiene JSON valido.", error); }
+    try { parsed = JSON.parse(json); } catch (error) { throw new TrackerError("invalid-data", "The imported file does not contain valid JSON.", error); }
     try {
-      if (!parsed || typeof parsed !== "object") throw new TrackerError("invalid-data", "Il formato dei dati importati non è riconosciuto.");
+      if (!parsed || typeof parsed !== "object") throw new TrackerError("invalid-data", "The imported data format is not recognised.");
       const candidate = parsed as Record<string, unknown>;
-      if (candidate.version !== undefined && candidate.version !== 1) throw new TrackerError("invalid-data", "Versione dei dati importati non supportata.");
+      if (candidate.version !== undefined && candidate.version !== 1) throw new TrackerError("invalid-data", "The imported data version is not supported.");
       const state = validateState(candidate.data ?? parsed);
       const snapshots = deduplicateSnapshots(state.snapshots, this.bucketMs);
       const db = await this.db();
@@ -196,6 +212,7 @@ export class IndexedDbTrackerRepository implements TrackerRepository {
       for (const snapshot of snapshots) await tx.objectStore("snapshots").put(snapshot, snapshotKey(snapshot, this.bucketMs));
       await tx.objectStore("preferences").put(state.rpcUrl, RPC_PREFERENCE_KEY);
       if (state.selectedAddress) await tx.objectStore("preferences").put(state.selectedAddress, SELECTED_ADDRESS_KEY);
+      await tx.objectStore("preferences").put(JSON.stringify(state.preferences ?? DEFAULT_DASHBOARD_PREFERENCES), DASHBOARD_PREFERENCES_KEY);
       await tx.done;
       return this.readState(db);
     } catch (error) { throw storageError(error); }
@@ -217,4 +234,3 @@ export class IndexedDbTrackerRepository implements TrackerRepository {
 }
 
 export const TrackerRepositoryImpl = IndexedDbTrackerRepository;
-
