@@ -9,6 +9,11 @@ export type TrackerErrorCode =
   | "rpc"
   | "offline"
   | "contract"
+  | "archive-rpc"
+  | "rate-limited"
+  | "wrong-network"
+  | "sync"
+  | "cancelled"
   | "storage"
   | "invalid-data";
 

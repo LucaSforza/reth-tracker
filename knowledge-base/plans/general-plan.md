@@ -11,25 +11,28 @@ site must run entirely in the browser and be deployable to GitHub Pages.
 1. A visitor enters an Ethereum address; connecting a wallet is not required.
 2. The application reads the address's rETH balance and the protocol's rETH/ETH
    exchange rate directly from Ethereum JSON-RPC.
-3. It displays current rETH, protocol value in ETH, locally observed staking
-   rewards, rate, and last refresh time.
+3. It displays current rETH, protocol value in ETH, protocol yield, rate, and
+   last refresh time.
 4. Each successful refresh creates at most one local observation for that
    address and time bucket.
 5. The browser stores watched addresses, observations, preferences, and the
    selected RPC URL. Users can export and import this local data as JSON.
-6. A chart shows the locally observed protocol value and rewards over time.
+6. A chart shows protocol value over time. Before a historical synchronization,
+   it falls back to locally captured observations.
+7. An archive-capable RPC can reconstruct event-aware protocol yield from the
+   first incoming rETH transfer through the latest finalized block.
 
 ## Product boundary
 
-The MVP reports **locally observed rewards**, not complete lifetime earnings.
-For consecutive observations, reward accrual is estimated as:
+Before historical synchronization, the app reports a local observation
+estimate. For consecutive observations, reward accrual is estimated as:
 
 `previous rETH balance × (current protocol rate − previous protocol rate)`
 
-This prevents a newly received rETH amount from being counted directly as
-yield. A transfer occurring between observations still introduces a small timing
-uncertainty; the interface must communicate this. Full historical accounting
-from all ERC-20 transfers and archive-state calls is a later milestone.
+Historical synchronization replaces that cumulative estimate with protocol
+yield reconstructed from rETH `Transfer` boundaries and historical protocol
+rates. Transfers change exposure and are never counted as yield. The metric is
+not market profit, purchase-price performance, tax basis, or gas-adjusted return.
 
 ## Architecture
 
@@ -71,10 +74,10 @@ can be overridden through `VITE_BASE_PATH`.
 Tasks 02 and 03 are intentionally parallel. Task 04 integrates their contracts;
 task 05 begins only after the production build succeeds.
 
-## Deferred work
+## Later work
 
-- Complete historical reconstruction from rETH `Transfer` events.
-- Archive-node queries for historical exchange rates.
+- Historical reconstruction from rETH `Transfer` events and archive-node rate
+  queries moved into the active
+  [local durability and historical yield plan](local-durability-and-historical-yield.md).
 - Cross-device synchronization and scheduled background refresh.
 - Fiat pricing, tax lots, multi-chain or DeFi-position discovery.
-

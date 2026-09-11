@@ -1,5 +1,5 @@
 import { isAddress } from "viem";
-import { DEFAULT_DASHBOARD_PREFERENCES, type ChainSnapshot, type DashboardPreferences, type EthereumAddress, type TrackerState } from "../domain/types";
+import { DEFAULT_DASHBOARD_PREFERENCES, type ChainSnapshot, type DashboardPreferences, type EthereumAddress, type HistoricalSyncState, type ProtocolRateSample, type RethTransferRecord, type TrackerState } from "../domain/types";
 import { TrackerError } from "./errors";
 
 const DECIMAL_INTEGER = /^(0|[1-9][0-9]*)$/;
@@ -102,7 +102,74 @@ export function validateState(value: unknown): TrackerState {
   }
   const rpcUrl = validateRpcUrl(candidate.rpcUrl);
   const preferences = candidate.preferences === undefined ? DEFAULT_DASHBOARD_PREFERENCES : validatePreferences(candidate.preferences);
-  return { watchedAddresses, selectedAddress, snapshots, rpcUrl, preferences };
+  const historicalTransfers = candidate.historicalTransfers === undefined ? [] : requireArray(candidate.historicalTransfers, "historicalTransfers").map(validateTransfer);
+  const protocolRates = candidate.protocolRates === undefined ? [] : requireArray(candidate.protocolRates, "protocolRates").map(validateProtocolRate);
+  const historicalSyncs = candidate.historicalSyncs === undefined ? [] : requireArray(candidate.historicalSyncs, "historicalSyncs").map(validateHistoricalSync);
+  return { watchedAddresses, selectedAddress, snapshots, rpcUrl, preferences, historicalTransfers, protocolRates, historicalSyncs };
+}
+
+function requireArray(value: unknown, field: string): unknown[] {
+  if (!Array.isArray(value)) throw new TrackerError("invalid-data", `${field} must be an array.`);
+  return value;
+}
+
+function validateBlockString(value: unknown, field: string): string {
+  if (typeof value !== "string" || !DECIMAL_INTEGER.test(value)) throw new TrackerError("invalid-data", `${field} is not a valid block number.`);
+  return value;
+}
+
+function validateTimestamp(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) throw new TrackerError("invalid-data", `${field} is not a valid timestamp.`);
+  return value;
+}
+
+export function validateTransfer(value: unknown): RethTransferRecord {
+  if (!value || typeof value !== "object") throw new TrackerError("invalid-data", "Historical transfer is not valid.");
+  const item = value as Record<string, unknown>;
+  if (typeof item.id !== "string" || typeof item.transactionHash !== "string" || !item.id || !item.transactionHash) throw new TrackerError("invalid-data", "Historical transfer identifier is not valid.");
+  parseWei(item.amountWei, "amountWei");
+  return {
+    id: item.id,
+    trackedAddress: normalizeAddress(item.trackedAddress),
+    transactionHash: item.transactionHash,
+    transactionIndex: validateBlockString(item.transactionIndex, "transactionIndex"),
+    logIndex: validateBlockString(item.logIndex, "logIndex"),
+    blockNumber: validateBlockString(item.blockNumber, "blockNumber"),
+    capturedAt: validateTimestamp(item.capturedAt, "capturedAt"),
+    from: normalizeAddress(item.from),
+    to: normalizeAddress(item.to),
+    amountWei: item.amountWei as string,
+    ...(typeof item.blockHash === "string" ? { blockHash: item.blockHash } : {}),
+  };
+}
+
+export function validateProtocolRate(value: unknown): ProtocolRateSample {
+  if (!value || typeof value !== "object") throw new TrackerError("invalid-data", "Protocol rate is not valid.");
+  const item = value as Record<string, unknown>;
+  parseWei(item.rateWei, "rateWei");
+  return {
+    blockNumber: validateBlockString(item.blockNumber, "blockNumber"),
+    capturedAt: validateTimestamp(item.capturedAt, "capturedAt"),
+    rateWei: item.rateWei as string,
+    ...(typeof item.blockHash === "string" ? { blockHash: item.blockHash } : {}),
+  };
+}
+
+export function validateHistoricalSync(value: unknown): HistoricalSyncState {
+  if (!value || typeof value !== "object") throw new TrackerError("invalid-data", "Historical sync state is not valid.");
+  const item = value as Record<string, unknown>;
+  if (!["running", "error", "cancelled", "complete"].includes(item.status as string)) throw new TrackerError("invalid-data", "Historical sync status is not valid.");
+  return {
+    address: normalizeAddress(item.address),
+    fromBlock: validateBlockString(item.fromBlock, "fromBlock"),
+    targetBlock: validateBlockString(item.targetBlock, "targetBlock"),
+    nextBlock: validateBlockString(item.nextBlock, "nextBlock"),
+    status: item.status as HistoricalSyncState["status"],
+    updatedAt: validateTimestamp(item.updatedAt, "updatedAt"),
+    ...(typeof item.completedAt === "number" ? { completedAt: validateTimestamp(item.completedAt, "completedAt") } : {}),
+    ...(typeof item.errorCode === "string" ? { errorCode: item.errorCode } : {}),
+    ...(typeof item.errorMessage === "string" ? { errorMessage: item.errorMessage } : {}),
+  };
 }
 
 export function validatePreferences(value: unknown): DashboardPreferences {

@@ -1,17 +1,20 @@
 # rETH Tracker knowledge base
 
-This directory is the working source of truth for the browser MVP. It records the
-product scope, architectural decisions, implementation plan, task dependencies,
-and QA findings so future changes do not depend on chat history.
+This directory is the durable source of truth for the product. It deliberately
+separates plans, which may evolve as work is completed, from constraints, which
+all implementations and future plans must preserve.
 
-## Documents
+## Plans
 
-- [General plan](general-plan.md)
-- [Task 01 — application foundation](tasks/01-foundation.md)
-- [Task 02 — Ethereum and local-data layer](tasks/02-data-layer.md)
-- [Task 03 — dashboard experience](tasks/03-dashboard.md)
-- [Task 04 — tests, deployment, and documentation](tasks/04-quality-deployment.md)
-- [Task 05 — browser QA](tasks/05-browser-qa.md)
+- [Browser MVP plan](plans/general-plan.md)
+- [Local durability and historical protocol yield](plans/local-durability-and-historical-yield.md)
+- [Implementation tasks](plans/tasks/)
 
 Task statuses use: `planned`, `in-progress`, `blocked`, and `complete`.
 
+## Constraints
+
+- [Product invariants](constraints/product-invariants.md)
+
+When a plan conflicts with a constraint, the constraint wins. Any proposed
+change to a constraint must be recorded explicitly before implementation.

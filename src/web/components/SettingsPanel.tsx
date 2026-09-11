@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import type { DashboardPreferences } from "../domain/types";
+import type { DashboardPreferences, StoragePersistenceStatus } from "../domain/types";
 import { getCopy } from "../i18n";
 import { Icon } from "./Icon";
 
@@ -12,9 +12,12 @@ interface SettingsPanelProps {
   onExport?: () => void | Promise<void>;
   onImport?: (json: string) => void | Promise<void>;
   onClear?: () => void | Promise<void>;
+  storagePersistence?: StoragePersistenceStatus;
+  onRequestStoragePersistence?: () => void | Promise<void>;
+  mutationsDisabled?: boolean;
 }
 
-export function SettingsPanel({ rpcUrl, preferences, onRpcUrlChange, onPreferencesChange, onExport, onImport, onClear }: SettingsPanelProps) {
+export function SettingsPanel({ rpcUrl, preferences, onRpcUrlChange, onPreferencesChange, onExport, onImport, onClear, storagePersistence, onRequestStoragePersistence, mutationsDisabled = false }: SettingsPanelProps) {
   const input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [rpc, setRpc] = useState(rpcUrl);
@@ -61,8 +64,9 @@ export function SettingsPanel({ rpcUrl, preferences, onRpcUrlChange, onPreferenc
         <label><input type="checkbox" checked={preferences.visibleSections.history} onChange={() => toggleSection("history")} /> <span>{t.historySection}</span></label>
       </div></div>
       <div className="settings-section"><label htmlFor="rpc-url">{t.rpcEndpoint}</label><p className="field-help">{t.rpcHelp}</p><div className="rpc-row"><input id="rpc-url" type="url" value={rpc} onChange={(event) => setRpc(event.target.value)} placeholder="https://..." /><button type="button" className="button button-secondary" onClick={saveRpc}>{t.save}</button></div></div>
-      <div className="settings-section data-actions"><div><strong>{t.yourData}</strong><p>{t.dataHelp}</p></div><div className="action-row"><button type="button" className="button button-secondary" onClick={() => void exportData()}><Icon name="download" size={16} /> {t.export}</button><button type="button" className="button button-secondary" onClick={() => input.current?.click()}><Icon name="upload" size={16} /> {t.import}</button><input ref={input} type="file" accept="application/json,.json" onChange={importFile} hidden /></div></div>
-      <div className="settings-danger"><button type="button" className="text-danger" onClick={() => { if (window.confirm(t.clearConfirm)) void onClear?.(); }}><Icon name="trash" size={16} /> {t.clearLocalData}</button></div>{notice && <p className="settings-notice" role="status"><Icon name="check" size={15} /> {notice}</p>}
+      <div className="settings-section data-actions"><div><strong>{t.yourData}</strong><p>{t.dataHelp}</p></div><div className="action-row"><button type="button" className="button button-secondary" onClick={() => void exportData()}><Icon name="download" size={16} /> {t.export}</button><button type="button" className="button button-secondary" onClick={() => input.current?.click()} disabled={mutationsDisabled}><Icon name="upload" size={16} /> {t.import}</button><input ref={input} type="file" accept="application/json,.json" onChange={importFile} hidden disabled={mutationsDisabled} /></div></div>
+      <div className="settings-section persistence-block"><strong>{t.localPersistence}</strong><p role="status" data-status={storagePersistence?.state ?? "checking"} className={`persistence-status persistence-${storagePersistence?.state ?? "checking"}`}>{storagePersistence?.state === "granted" ? t.persistenceGranted : storagePersistence?.state === "not-granted" ? t.persistenceNotGranted : storagePersistence?.state === "error" ? t.persistenceError : storagePersistence?.state === "unsupported" ? t.persistenceUnsupported : t.persistenceChecking}</p>{storagePersistence?.state !== "checking" && storagePersistence?.state !== "granted" && storagePersistence?.state !== "unsupported" && <button type="button" className="button button-secondary" onClick={() => void onRequestStoragePersistence?.()}>{t.requestPersistence}</button>}<p className="field-help">{t.persistenceBoundary}</p></div>
+      <div className="settings-danger"><button type="button" className="text-danger" disabled={mutationsDisabled} onClick={() => { if (window.confirm(t.clearConfirm)) void onClear?.(); }}><Icon name="trash" size={16} /> {t.clearLocalData}</button></div>{notice && <p className="settings-notice" role="status"><Icon name="check" size={15} /> {notice}</p>}
     </div>}
   </section>;
 }

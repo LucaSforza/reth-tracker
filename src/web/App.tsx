@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { DEFAULT_DASHBOARD_PREFERENCES, type ChainSnapshot, type DashboardPreferences, type EthereumAddress, type TrackerState } from "./domain/types";
-import { calculateCumulativeRewardWei } from "./domain/calculations";
-import { DEFAULT_RPC_URL, IndexedDbTrackerRepository, ViemEthereumReader, isTrackerError, normalizeAddress } from "./data";
+import { DEFAULT_DASHBOARD_PREFERENCES, type ChainSnapshot, type DashboardPreferences, type EthereumAddress, type StoragePersistenceStatus, type TrackerState } from "./domain/types";
+import { RATE_SCALE, calculateCumulativeRewardWei, calculateHistoricalProtocolYield } from "./domain/calculations";
+import { DEFAULT_RPC_URL, IndexedDbTrackerRepository, ViemEthereumReader, ViemHistoricalChainReader, isTrackerError, normalizeAddress, requestStoragePersistence, synchronizeHistoricalYield, type HistoricalSyncProgress } from "./data";
 import { getCopy } from "./i18n";
 import { Icon } from "./components/Icon";
 import { ObservationChart } from "./components/ObservationChart";
@@ -25,10 +25,17 @@ export interface DashboardProps {
   onExport?: () => void | Promise<void>;
   onImport?: (json: string) => void | Promise<void>;
   onClear?: () => void | Promise<void>;
+  storagePersistence?: StoragePersistenceStatus;
+  onRequestStoragePersistence?: () => void | Promise<void>;
+  onSyncHistory?: () => void | Promise<void>;
+  onCancelHistory?: () => void;
+  historyProgress?: HistoricalSyncProgress;
+  historySyncing?: boolean;
 }
 
 const repository = new IndexedDbTrackerRepository();
 const ethereumReader = new ViemEthereumReader();
+const historicalReader = new ViemHistoricalChainReader();
 const emptyState: TrackerState = { watchedAddresses: [], snapshots: [], rpcUrl: DEFAULT_RPC_URL, preferences: DEFAULT_DASHBOARD_PREFERENCES };
 
 function weiToNumber(wei: string) {
@@ -56,7 +63,7 @@ function EmptyDashboard({ onAdd, locale }: { onAdd: (event: FormEvent<HTMLFormEl
   return <div className="empty-dashboard"><span className="empty-mark"><Icon name="wallet" size={25} /></span><h2>{t.startTitle}</h2><p>{t.startCopy}</p><form onSubmit={onAdd} className="empty-form"><input name="address" aria-label={t.ethereumAddress} placeholder="0x…" autoComplete="off" /><button type="submit" className="button button-primary"><Icon name="plus" size={17} /> {t.add}</button></form></div>;
 }
 
-export function Dashboard({ state, status = "idle", errorMessage, onAddAddress, onRemoveAddress, onSelectAddress, onRefresh, onRpcUrlChange, onPreferencesChange, onExport, onImport, onClear }: DashboardProps) {
+export function Dashboard({ state, status = "idle", errorMessage, onAddAddress, onRemoveAddress, onSelectAddress, onRefresh, onRpcUrlChange, onPreferencesChange, onExport, onImport, onClear, storagePersistence, onRequestStoragePersistence, onSyncHistory, onCancelHistory, historyProgress, historySyncing = false }: DashboardProps) {
   const [addressValue, setAddressValue] = useState("");
   const [addressError, setAddressError] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -68,7 +75,25 @@ export function Dashboard({ state, status = "idle", errorMessage, onAddAddress, 
   const selectedSnapshots = useMemo(() => state.snapshots.filter((snapshot) => !selectedAddress || snapshot.address.toLowerCase() === selectedAddress.toLowerCase()), [state.snapshots, selectedAddress]);
   const latest = latestFor(state.snapshots, selectedAddress);
   const first = [...selectedSnapshots].sort((a, b) => a.capturedAt - b.capturedAt)[0];
-  const delta = observedReward(state.snapshots, selectedAddress);
+  const selectedSync = state.historicalSyncs?.find((sync) => sync.address.toLowerCase() === selectedAddress?.toLowerCase());
+  const historicalResult = useMemo(() => {
+    if (!selectedAddress || selectedSync?.status !== "complete") return undefined;
+    try {
+      return calculateHistoricalProtocolYield(selectedAddress, (state.historicalTransfers ?? []).filter((transfer) => transfer.trackedAddress === selectedAddress), state.protocolRates ?? [], selectedSync.targetBlock);
+    } catch { return undefined; }
+  }, [selectedAddress, selectedSync, state.historicalTransfers, state.protocolRates]);
+  const delta = historicalResult ? weiToNumber(historicalResult.cumulativeYieldWei) : observedReward(state.snapshots, selectedAddress);
+  const timelineSnapshots: ChainSnapshot[] = historicalResult ? historicalResult.points.map((point) => ({
+    id: `history:${point.address}:${point.blockNumber}`,
+    address: point.address,
+    capturedAt: point.capturedAt,
+    blockNumber: point.blockNumber,
+    rethBalanceWei: point.balanceWei,
+    ethValueWei: ((BigInt(point.balanceWei) * BigInt(point.rateWei)) / RATE_SCALE).toString(),
+    ethBalanceWei: "0",
+    rateWei: point.rateWei,
+    rethDecimals: 18,
+  })) : selectedSnapshots;
   const percent = first && latest && weiToNumber(first.ethValueWei) ? (delta / weiToNumber(first.ethValueWei)) * 100 : 0;
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -89,13 +114,14 @@ export function Dashboard({ state, status = "idle", errorMessage, onAddAddress, 
       <section className="watch-bar" aria-labelledby="watch-title"><div className="section-label"><span className="label-kicker">01</span><h2 id="watch-title">{t.watchedAddresses}</h2></div>{addressForm}{addressError && <p className="form-error" id="address-error" role="alert">{addressError}</p>}{state.watchedAddresses.length > 0 && <div className="address-list" aria-label={t.watchedAddresses}>{state.watchedAddresses.map((address) => <div key={address} className={`address-pill ${address.toLowerCase() === selectedAddress?.toLowerCase() ? "selected" : ""}`}><button type="button" onClick={() => void onSelectAddress?.(address)} aria-pressed={address.toLowerCase() === selectedAddress?.toLowerCase()}><span className="address-identicon">{address.slice(2, 4).toUpperCase()}</span><span>{shortAddress(address, t.waitingForData)}</span>{address.toLowerCase() === selectedAddress?.toLowerCase() && <span className="selected-dot" />}</button><button type="button" className="remove-address" aria-label={`${t.remove} ${shortAddress(address, t.waitingForData)}`} onClick={() => void onRemoveAddress?.(address)}>×</button></div>)}</div>}</section>
       {status === "error" && <div className="state-banner error" role="alert"><Icon name="info" size={18} /><span>{errorMessage ?? t.updateError}</span><button type="button" className="button button-small" onClick={() => void onRefresh?.()}>{t.retry}</button></div>}
       {status === "loading" && <div className="state-banner loading" role="status"><span className="spinner" /> {t.loading}</div>}
+      {historySyncing && <div className="state-banner history-sync" role="status"><span className="spinner" /><span>{historyProgress?.fromBlock ? `${t.historySyncProgress} #${historyProgress.fromBlock}–#${historyProgress.toBlock}` : t.historySyncPreparing}</span><button type="button" className="button button-small" onClick={onCancelHistory}>{t.cancel}</button></div>}
       {!state.watchedAddresses.length ? <EmptyDashboard onAdd={onSubmit} locale={locale} /> : <>
-        {preferences.visibleSections.overview && <section className="overview-section" aria-labelledby="overview-title"><div className="section-heading"><div><p className="section-kicker">{t.overviewKicker}</p><h2 id="overview-title">{t.yourPosition}</h2></div><div className="heading-actions"><span className="last-updated">{updatedLabel}</span><button type="button" className="button button-icon-label" onClick={() => void onRefresh?.()} disabled={status === "loading"}><Icon name="refresh" size={16} /> {t.refresh}</button></div></div><div className="selected-address"><span className="address-identicon large">{selectedAddress?.slice(2, 4).toUpperCase()}</span><span><small>{t.selectedAddress}</small><strong>{shortAddress(selectedAddress, t.waitingForData)}</strong></span><span className="chain-tag">ETH</span></div><div className="metric-grid"><article className="metric-card primary"><div className="metric-top"><span>{t.protocolValue}</span><span className="metric-icon"><Icon name="chart" size={17} /></span></div><strong className="metric-number">{latest ? formatEth(latest.ethValueWei, locale) : "—"} <small>ETH</small></strong><span className="metric-foot">{t.protocolValueHelp}</span></article><article className="metric-card"><div className="metric-top"><span>{t.rethBalance}</span><span className="metric-icon"><Icon name="wallet" size={17} /></span></div><strong className="metric-number">{latest ? formatEth(latest.rethBalanceWei, locale) : "—"} <small>rETH</small></strong><span className="metric-foot">{t.rethBalanceHelp}</span></article><article className="metric-card"><div className="metric-top"><span>{t.observedGrowth}</span><span className="metric-icon positive"><Icon name="arrowUpRight" size={17} /></span></div><strong className="metric-number positive">{delta >= 0 ? "+" : "−"}{Math.abs(delta).toLocaleString(numberLocale, { minimumFractionDigits: 4, maximumFractionDigits: 4 })} <small>ETH</small></strong><span className="metric-foot"><span className="positive">{percent >= 0 ? "+" : ""}{percent.toFixed(2)}%</span> {t.sinceFirst}</span></article><article className="metric-card"><div className="metric-top"><span>{t.rethRate}</span><span className="metric-icon rate">↗</span></div><strong className="metric-number">{latest ? formatEth(latest.rateWei, locale) : "—"} <small>ETH</small></strong><span className="metric-foot">{t.rateHelp}</span></article></div></section>}
-        {preferences.visibleSections.overview && <section className="insight-card"><span className="insight-icon"><Icon name="info" size={21} /></span><div><h3>{t.observedYieldTitle}</h3><p>{t.observedYieldCopy}</p></div><a href="https://docs.rocketpool.net/" target="_blank" rel="noreferrer">{t.howItWorks} <Icon name="external" size={14} /></a></section>}
-        {preferences.visibleSections.chart && <section className="chart-section" aria-labelledby="chart-title"><div className="section-heading"><div><p className="section-kicker">{t.observationsKicker}</p><h2 id="chart-title">{t.valueOverTime}</h2></div><div className="chart-legend"><span /> {t.protocolValueLegend} <span className="legend-muted" /> {t.observationsLegend}</div></div><div className="chart-card"><ObservationChart snapshots={selectedSnapshots} locale={locale} /></div></section>}
+        {preferences.visibleSections.overview && <section className="overview-section" aria-labelledby="overview-title"><div className="section-heading"><div><p className="section-kicker">{t.overviewKicker}</p><h2 id="overview-title">{t.yourPosition}</h2></div><div className="heading-actions"><span className="last-updated">{updatedLabel}</span><button type="button" className="button button-icon-label" onClick={() => void onSyncHistory?.()} disabled={Boolean(historyProgress)}><Icon name="chart" size={16} /> {selectedSync ? t.updateHistory : t.reconstructHistory}</button><button type="button" className="button button-icon-label" onClick={() => void onRefresh?.()} disabled={status === "loading"}><Icon name="refresh" size={16} /> {t.refresh}</button></div></div><div className="selected-address"><span className="address-identicon large">{selectedAddress?.slice(2, 4).toUpperCase()}</span><span><small>{t.selectedAddress}</small><strong>{shortAddress(selectedAddress, t.waitingForData)}</strong></span><span className="chain-tag">ETH</span></div><div className="metric-grid"><article className="metric-card primary"><div className="metric-top"><span>{t.protocolValue}</span><span className="metric-icon"><Icon name="chart" size={17} /></span></div><strong className="metric-number">{latest ? formatEth(latest.ethValueWei, locale) : "—"} <small>ETH</small></strong><span className="metric-foot">{t.protocolValueHelp}</span></article><article className="metric-card"><div className="metric-top"><span>{t.rethBalance}</span><span className="metric-icon"><Icon name="wallet" size={17} /></span></div><strong className="metric-number">{latest ? formatEth(latest.rethBalanceWei, locale) : "—"} <small>rETH</small></strong><span className="metric-foot">{t.rethBalanceHelp}</span></article><article className="metric-card"><div className="metric-top"><span>{historicalResult ? t.historicalProtocolYield : t.observedGrowth}</span><span className="metric-icon positive"><Icon name="arrowUpRight" size={17} /></span></div><strong className="metric-number positive">{delta >= 0 ? "+" : "−"}{Math.abs(delta).toLocaleString(numberLocale, { minimumFractionDigits: 4, maximumFractionDigits: 4 })} <small>ETH</small></strong><span className="metric-foot">{historicalResult ? t.sinceFirstReth : <><span className="positive">{percent >= 0 ? "+" : ""}{percent.toFixed(2)}%</span> {t.sinceFirst}</>}</span></article><article className="metric-card"><div className="metric-top"><span>{t.rethRate}</span><span className="metric-icon rate">↗</span></div><strong className="metric-number">{latest ? formatEth(latest.rateWei, locale) : "—"} <small>ETH</small></strong><span className="metric-foot">{t.rateHelp}</span></article></div></section>}
+        {preferences.visibleSections.overview && <section className="insight-card"><span className="insight-icon"><Icon name="info" size={21} /></span><div><h3>{historicalResult ? t.historicalYieldTitle : t.observedYieldTitle}</h3><p>{historicalResult ? t.historicalYieldCopy : t.observedYieldCopy}</p></div><a href="https://docs.rocketpool.net/" target="_blank" rel="noreferrer">{t.howItWorks} <Icon name="external" size={14} /></a></section>}
+        {preferences.visibleSections.chart && <section className="chart-section" aria-labelledby="chart-title"><div className="section-heading"><div><p className="section-kicker">{t.observationsKicker}</p><h2 id="chart-title">{t.valueOverTime}</h2></div><div className="chart-legend"><span /> {t.protocolValueLegend} <span className="legend-muted" /> {historicalResult ? t.historicalTimelineLegend : t.observationsLegend}</div></div><div className="chart-card"><ObservationChart snapshots={timelineSnapshots} locale={locale} /></div></section>}
         {preferences.visibleSections.history && <section className="history-section" id="storico" aria-labelledby="history-title"><div className="section-heading"><div><p className="section-kicker">{t.historyKicker}</p><h2 id="history-title">{t.observationHistory}</h2></div><span className="observation-count">{selectedSnapshots.length} {selectedSnapshots.length === 1 ? t.observation : t.observations}</span></div><div className="history-card"><HistoryTable snapshots={selectedSnapshots} locale={locale} /></div></section>}
       </>}
-      <SettingsPanel rpcUrl={state.rpcUrl} preferences={preferences} onRpcUrlChange={onRpcUrlChange} onPreferencesChange={onPreferencesChange} onExport={onExport} onImport={onImport} onClear={onClear} />
+      <SettingsPanel rpcUrl={state.rpcUrl} preferences={preferences} onRpcUrlChange={onRpcUrlChange} onPreferencesChange={onPreferencesChange} onExport={onExport} onImport={onImport} onClear={onClear} storagePersistence={storagePersistence} onRequestStoragePersistence={onRequestStoragePersistence} mutationsDisabled={historySyncing} />
     </main>
     <footer className="footer"><span>rETH Compass <span className="footer-separator">/</span> {t.footer}</span><span className="footer-links"><a href="https://rocketpool.net/" target="_blank" rel="noreferrer">Rocket Pool <Icon name="external" size={12} /></a><a href="https://github.com/LucaSforza/reth-tracker" target="_blank" rel="noreferrer">Open source <Icon name="external" size={12} /></a></span></footer>
   </div>;
@@ -105,6 +131,10 @@ export function App() {
   const [state, setState] = useState<TrackerState>(emptyState);
   const [status, setStatus] = useState<DashboardStatus>("loading");
   const [errorMessage, setErrorMessage] = useState<string>();
+  const [storagePersistence, setStoragePersistence] = useState<StoragePersistenceStatus>({ state: "checking", persisted: false });
+  const [historyProgress, setHistoryProgress] = useState<HistoricalSyncProgress>();
+  const [historySyncing, setHistorySyncing] = useState(false);
+  const historyAbort = useRef<AbortController | undefined>(undefined);
 
   const reportError = (error: unknown) => {
     setStatus("error");
@@ -117,6 +147,10 @@ export function App() {
       .then((loaded) => { if (active) { setState(loaded); setStatus("idle"); } })
       .catch((error) => { if (active) reportError(error); });
     return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    void requestStoragePersistence().then(setStoragePersistence);
   }, []);
 
   const captureSnapshot = async (address: EthereumAddress, rpcUrl: string) => {
@@ -132,6 +166,7 @@ export function App() {
   };
 
   const removeAddress = async (address: EthereumAddress) => {
+    if (historySyncing) return;
     try { setState(await repository.removeAddress(address)); setStatus("idle"); setErrorMessage(undefined); }
     catch (error) { reportError(error); }
   };
@@ -165,16 +200,48 @@ export function App() {
   };
 
   const importData = async (json: string) => {
+    if (historySyncing) throw new Error("Historical synchronization must finish or be cancelled before importing data.");
     try { setState(await repository.importJson(json)); setStatus("idle"); setErrorMessage(undefined); }
     catch (error) { reportError(error); throw error; }
   };
 
   const clearData = async () => {
+    if (historySyncing) return;
     try { setState(await repository.clear()); setStatus("idle"); setErrorMessage(undefined); }
     catch (error) { reportError(error); }
   };
 
-  return <Dashboard state={state} status={status} errorMessage={errorMessage} onAddAddress={addAddress} onRemoveAddress={removeAddress} onSelectAddress={selectAddress} onRefresh={refresh} onRpcUrlChange={saveRpcUrl} onPreferencesChange={savePreferences} onExport={exportData} onImport={importData} onClear={clearData} />;
+  const protectStorage = async () => {
+    setStoragePersistence(await requestStoragePersistence());
+  };
+
+  const syncHistory = async () => {
+    const address = state.selectedAddress ?? state.watchedAddresses[0];
+    if (!address || historySyncing) return;
+    const controller = new AbortController();
+    historyAbort.current = controller;
+    setHistorySyncing(true);
+    setHistoryProgress({ fromBlock: "", toBlock: "", targetBlock: "" });
+    setErrorMessage(undefined);
+    try {
+      await synchronizeHistoricalYield(address, state.rpcUrl, repository, historicalReader, { signal: controller.signal, onProgress: setHistoryProgress });
+      setState(await repository.load());
+      setStatus("idle");
+    } catch (error) {
+      if (isTrackerError(error) && error.code === "cancelled") {
+        setState(await repository.load());
+        setStatus("idle");
+      } else reportError(error);
+    } finally {
+      setHistorySyncing(false);
+      setHistoryProgress(undefined);
+      historyAbort.current = undefined;
+    }
+  };
+
+  const cancelHistory = () => historyAbort.current?.abort();
+
+  return <Dashboard state={state} status={status} errorMessage={errorMessage} onAddAddress={addAddress} onRemoveAddress={removeAddress} onSelectAddress={selectAddress} onRefresh={refresh} onRpcUrlChange={saveRpcUrl} onPreferencesChange={savePreferences} onExport={exportData} onImport={importData} onClear={clearData} storagePersistence={storagePersistence} onRequestStoragePersistence={protectStorage} onSyncHistory={syncHistory} onCancelHistory={cancelHistory} historyProgress={historyProgress} historySyncing={historySyncing} />;
 }
 
 export default App;

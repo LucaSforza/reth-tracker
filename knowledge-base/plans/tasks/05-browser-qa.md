@@ -57,4 +57,6 @@ limitations are recorded in this file before its status becomes `complete`.
 - Closely spaced observations correctly report zero at the displayed precision;
   the reward chart gains meaning after refreshes at different protocol rates.
 - The public default RPC can rate-limit or change its CORS policy.
-- Complete lifetime and tax-lot accounting remain outside the MVP scope.
+- Historical protocol-yield reconstruction is now implemented. Complete tax-
+  lot, market-profit, gas, and lifetime financial accounting remain outside the
+  MVP scope.

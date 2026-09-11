@@ -1,4 +1,4 @@
-import type { ChainSnapshot, RewardPoint } from "./types";
+import type { ChainSnapshot, EthereumAddress, HistoricalYieldResult, ProtocolRateSample, RethTransferRecord, RewardPoint } from "./types";
 import { parseWei } from "../data/validation";
 
 /** rETH's exchange-rate contract methods return 1e18-scaled ETH per rETH. */
@@ -63,4 +63,105 @@ export function assertSameAddress(left: ChainSnapshot, right: ChainSnapshot): vo
   if (left.address.toLowerCase() !== right.address.toLowerCase()) {
     throw new Error("Snapshots must belong to the same address.");
   }
+}
+
+function compareTransfer(left: RethTransferRecord, right: RethTransferRecord): number {
+  for (const field of ["blockNumber", "transactionIndex", "logIndex"] as const) {
+    const a = BigInt(left[field]);
+    const b = BigInt(right[field]);
+    if (a < b) return -1;
+    if (a > b) return 1;
+  }
+  return left.id.localeCompare(right.id);
+}
+
+/** Reconstruct ETH backing accrued while an address held rETH. Transfers only change exposure. */
+export function calculateHistoricalProtocolYield(
+  address: EthereumAddress,
+  transfers: readonly RethTransferRecord[],
+  rates: readonly ProtocolRateSample[],
+  targetBlock: string,
+): HistoricalYieldResult {
+  const account = address.toLowerCase();
+  const ordered = [...transfers].sort(compareTransfer);
+  if (ordered.some((transfer) => transfer.trackedAddress.toLowerCase() !== account)) {
+    throw new Error("Cannot aggregate historical transfers belonging to different addresses.");
+  }
+  const rateByBlock = new Map(rates.map((sample) => [sample.blockNumber, sample]));
+  const groups = new Map<string, RethTransferRecord[]>();
+  for (const transfer of ordered) {
+    parseWei(transfer.amountWei, "transfer amountWei");
+    const group = groups.get(transfer.blockNumber) ?? [];
+    group.push(transfer);
+    groups.set(transfer.blockNumber, group);
+  }
+
+  let started = false;
+  let balance = 0n;
+  let cumulative = 0n;
+  let previousRate = 0n;
+  let firstIncomingBlock: string | undefined;
+  const points: HistoricalYieldResult["points"] = [];
+
+  for (const [blockNumber, blockTransfers] of groups) {
+    if (BigInt(blockNumber) > BigInt(targetBlock)) break;
+    const incoming = blockTransfers.some((transfer) => transfer.to.toLowerCase() === account && transfer.from.toLowerCase() !== account);
+    if (!started && !incoming) continue;
+    const sample = rateByBlock.get(blockNumber);
+    if (!sample) throw new Error(`Missing protocol rate for block ${blockNumber}.`);
+    const rate = parseWei(sample.rateWei, "rateWei");
+    let intervalYield = 0n;
+    if (started) {
+      intervalYield = (balance * (rate - previousRate)) / RATE_SCALE;
+      cumulative += intervalYield;
+    } else {
+      started = true;
+      firstIncomingBlock = blockNumber;
+    }
+
+    for (const transfer of blockTransfers) {
+      const amount = parseWei(transfer.amountWei, "transfer amountWei");
+      const fromSelf = transfer.from.toLowerCase() === account;
+      const toSelf = transfer.to.toLowerCase() === account;
+      if (toSelf && !fromSelf) balance += amount;
+      if (fromSelf && !toSelf) balance -= amount;
+    }
+    if (balance < 0n) throw new Error(`Historical rETH balance became negative at block ${blockNumber}.`);
+    previousRate = rate;
+    points.push({
+      address,
+      blockNumber,
+      capturedAt: sample.capturedAt,
+      balanceWei: balance.toString(10),
+      rateWei: rate.toString(10),
+      intervalYieldWei: intervalYield.toString(10),
+      cumulativeYieldWei: cumulative.toString(10),
+    });
+  }
+
+  const terminal = rateByBlock.get(targetBlock);
+  if (!terminal) throw new Error(`Missing protocol rate for terminal block ${targetBlock}.`);
+  if (started && points.at(-1)?.blockNumber !== targetBlock) {
+    const terminalRate = parseWei(terminal.rateWei, "terminal rateWei");
+    const intervalYield = (balance * (terminalRate - previousRate)) / RATE_SCALE;
+    cumulative += intervalYield;
+    points.push({
+      address,
+      blockNumber: targetBlock,
+      capturedAt: terminal.capturedAt,
+      balanceWei: balance.toString(10),
+      rateWei: terminalRate.toString(10),
+      intervalYieldWei: intervalYield.toString(10),
+      cumulativeYieldWei: cumulative.toString(10),
+    });
+  }
+
+  return {
+    address,
+    ...(firstIncomingBlock ? { firstIncomingBlock } : {}),
+    terminalBlock: targetBlock,
+    terminalBalanceWei: balance.toString(10),
+    cumulativeYieldWei: cumulative.toString(10),
+    points,
+  };
 }
