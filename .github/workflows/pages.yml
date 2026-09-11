@@ -30,10 +30,9 @@ jobs:
         with:
           node-version: 22
 
-      # There is intentionally no lockfile in this early MVP. Keep the
-      # install non-interactive and avoid creating a lockfile in the runner.
+      # Use the committed lockfile so Pages builds are reproducible.
       - name: Install frontend dependencies
-        run: npm install --no-package-lock --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Type check
         run: npm run typecheck
